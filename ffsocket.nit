@@ -10,6 +10,7 @@ in "C Header" `{
 	#include <netinet/in.h>
 	#include <arpa/inet.h>
 	#include <netdb.h>
+	#include <sys/poll.h>
 	#include <errno.h>
 
 	typedef int S_DESCRIPTOR;
@@ -22,6 +23,24 @@ in "C Header" `{
 	typedef fd_set S_FD_SET;
 	typedef socklen_t S_LEN;
 `}
+
+# Data structure used by the poll function
+extern PollFD `{ struct pollfd `}
+	# File descriptor id
+	fun fd: Int `{ return recv.fd; `}
+	# List of events to be watched
+	fun events: Int `{ return recv.events; `}
+	# List of events received by the last poll function
+	fun revents: Int `{	return recv.revents; `}
+
+	new (pid: Int, events: FFSocketPollValues)`{
+		struct pollfd poll;
+		poll.fd = pid;
+		poll.events = events;
+		return poll;
+	`}
+
+end
 
 extern FFSocket `{ S_DESCRIPTOR* `}
 	
@@ -59,6 +78,34 @@ extern FFSocket `{ S_DESCRIPTOR* `}
 
 	private fun i_listen(size: Int):Int `{ return listen(*recv, size); `}
 	fun listen(size: Int):Int do return i_listen(size)
+
+	# Checks if the buffer is ready for any event specified when creating the pollfd structure
+	fun socket_poll(filedesc: PollFD, timeout: Int): Bool
+	do
+		var result = i_poll(filedesc, timeout)
+		assert result != -1
+		if result == 0 then return false
+		return true
+	end
+
+	# Call to the poll function of the C socket
+	#
+	# Signature :
+	# int poll(struct pollfd fds[], nfds_t nfds, int timeout);
+	#
+	# Official documentation of the poll function :
+	#
+	# The poll() function provides applications with a mechanism for multiplexing input/output over a set of file descriptors.
+	# For each member of the array pointed to by fds, poll() shall examine the given file descriptor for the event(s) specified in events.
+	# The number of pollfd structures in the fds array is specified by nfds.
+	# The poll() function shall identify those file descriptors on which an application can read or write data, or on which certain events have occurred.
+	# The fds argument specifies the file descriptors to be examined and the events of interest for each file descriptor.
+	# It is a pointer to an array with one member for each open file descriptor of interest.
+	# The array's members are pollfd structures within which fd specifies an open file descriptor and events and revents are bitmasks constructed by
+	# OR'ing a combination of the pollfd flags.
+	private fun i_poll(filedesc: PollFD, timeout: Int): Int `{
+		return poll(&filedesc, 1, timeout);
+	`}
 
 	private fun i_accept(addrIn: FFSocketAddrIn):FFSocket `{
 		S_LEN s = sizeof(S_ADDR);
@@ -209,4 +256,19 @@ extern FFSocketProtocolFamilies `{ int `}
 	new pf_inet6 `{ return PF_INET6; `}
 	new pf_max `{ return PF_MAX; `}
 end
+extern FFSocketPollValues `{ int `}
+	new pollin `{ return POLLIN; `}           # Data other than high-priority data may be read without blocking.
+	new pollrdnorm `{ return POLLRDNORM; `}   # Normal data may be read without blocking.
+	new pollrdband `{ return POLLRDBAND; `}   # Priority data may be read without blocking.
+	new pollpri `{ return POLLPRI; `}         # High-priority data may be read without blocking.
+	new pollout `{ return POLLOUT; `}         # Normal data may be written without blocking.
+	new pollwrnorm `{ return POLLWRNORM; `}   # Equivalent to POLLOUT
+	new pollwrband `{ return POLLWRBAND; `}   # Priority data may be written.
+	new pollerr `{ return POLLERR; `}         # An error has occurred on the device or stream. This flag is only valid in the revents bitmask; it shall be ignored in the events member.
+	new pollhup `{ return POLLHUP; `}         # The device has been disconnected. This event and POLLOUT are mutually-exclusive; a stream can never be writable if a hangup has occurred. However, this event and POLLIN, POLLRDNORM, POLLRDBAND, or POLLPRI are not mutually-exclusive. This flag is only valid in the revents bitmask; it shall be ignored in the events member.
+	new pollnval `{ return POLLNVAL; `}       # The specified fd value is invalid. This flag is only valid in the revents member; it shall ignored in the events member.
 
+	fun +(other: FFSocketPollValues): FFSocketPollValues `{
+		return recv | other;
+	`}
+end
