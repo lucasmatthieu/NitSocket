@@ -8,10 +8,13 @@ class Socket
 	var port: Int
 	private var socket: FFSocket
 	private var addrin: FFSocketAddrIn
+	# PollFD object, used for the ready_to_read function
+	private var read_pollFD: PollFD
 
 	init streamWithHost(thost: String, tport: Int)
 	do
 		socket = new FFSocket.socket( new FFSocketAddressFamilies.af_inet, new FFSocketTypes.sock_stream, new FFSocketProtocolFamilies.pf_null )
+		self.read_pollFD = new PollFD(socket.descriptor, new FFSocketPollValues.pollin)
 		var hostname = socket.gethostbyname(thost)
 		addrin = new FFSocketAddrIn.withHostent(hostname, tport)
 		address = addrin.address
@@ -22,6 +25,7 @@ class Socket
 	init streamWithPort(tport: Int)
 	do
 		socket = new FFSocket.socket( new FFSocketAddressFamilies.af_inet, new FFSocketTypes.sock_stream, new FFSocketProtocolFamilies.pf_null )
+		self.read_pollFD = new PollFD(socket.descriptor, new FFSocketPollValues.pollin)
 		addrin = new FFSocketAddrIn.with(tport, new FFSocketAddressFamilies.af_inet)
 		address = addrin.address
 		port = addrin.port
@@ -31,6 +35,7 @@ class Socket
 	init primitiveInit(h: FFSocketAcceptResult)
 	do
 		socket = h.socket
+		self.read_pollFD = new PollFD(socket.descriptor, new FFSocketPollValues.pollin)
 		addrin = h.addrIn
 		address = addrin.address
 		port = addrin.port
@@ -44,6 +49,9 @@ class Socket
 	fun bind:Bool do return socket.bind(addrin) >= 0
 	fun listen(size: Int):Bool do return socket.listen(size) >= 0
 	fun accept:Socket do return new Socket.primitiveInit(socket.accept)
+	# Checks if the socket is ready to be read with the read() function without blocking
+	fun ready_to_read: Bool do return socket.socket_poll(self.read_pollFD, 0)
+	fun timeout_rdy_to_read(timeout: Int): Bool do return socket.socket_poll(self.read_pollFD, timeout)
 
 	fun errno:Int do return socket.errno
 end
